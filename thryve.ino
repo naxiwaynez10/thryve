@@ -66,17 +66,6 @@ LV_IMG_DECLARE(speaking_symbol);
 #define LV_COLOR_ORANGE LV_COLOR_MAKE(0xFF, 0xA5, 0x00)
 
 
-// lv_obj_t *hour = NULL;
-// lv_obj_t *minute = NULL;
-// lv_obj_t *second = NULL;
-// lv_obj_t *year = NULL;
-// lv_obj_t *month = NULL;
-// lv_obj_t *week = NULL;
-// lv_obj_t *day = NULL;
-// lv_obj_t *state = NULL;
-
-
-
 
 static uint8_t pageId = 0;
 static bool canScreenOff = true;
@@ -87,34 +76,6 @@ static RTC_DATA_ATTR int brightnessLevel = 0;
 
 static int battery_percentage;
 lv_obj_t *battery_percent;
-
-
-
-
-
-
-// typedef struct _lv_datetime {
-//   lv_obj_t *obj;
-//   const char *name;
-//   uint16_t minVal;
-//   uint16_t maxVal;
-//   uint16_t defaultVal;
-//   uint8_t digitFormat;
-// } lv_datetime_t;
-
-// static lv_datetime_t lv_datetime[] = {
-//   { NULL, "Year", 2023, 2099, 2025, 4 },
-//   { NULL, "Mon", 1, 12, 4, 2 },
-//   { NULL, "Day", 1, 30, 12, 2 },
-//   { NULL, "Hour", 0, 24, 22, 2 },
-//   { NULL, "Min", 0, 59, 30, 2 },
-//   { NULL, "Sec", 0, 59, 0, 2 }
-// };
-
-
-LV_IMG_DECLARE(recycle_symbol);
-LV_IMG_DECLARE(carbon_symbol);
-LV_IMG_DECLARE(speaking_symbol);
 
 
 
@@ -131,7 +92,6 @@ void battery_bar(lv_obj_t *parent);
 
 extern "C" {
   void cta_block(lv_obj_t *parent, lv_coord_t arc_size, uint16_t img_zoom);
-  void digital_clock(lv_obj_t *parent);
 };
 
 static lv_obj_t *view = NULL;
