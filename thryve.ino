@@ -89,8 +89,8 @@ struct tm timeinfo;
 lv_timer_t *clockTimer;
 
 void main_ui(void);
-void battery_bar(lv_obj_t *parent);
-
+// void battery_bar(lv_obj_t *parent);
+void check_battery_cb(lv_timer_t *t);
 extern "C" {
   void cta_block(lv_obj_t *parent, lv_coord_t arc_size, uint16_t img_zoom);
 };
@@ -122,6 +122,7 @@ void setup() {
   beginLvglHelper();
   time(&now);
   localtime_r(&now, &timeinfo);
+  battery_percentage = watch.getBatteryPercent();
   main_ui();
   usbPlugIn = watch.isVbusIn();
 }
@@ -202,9 +203,51 @@ void main_ui() {
 
   lv_obj_t *header = lv_obj_create(home_main_col);
   lv_obj_remove_style_all(header);
-  lv_obj_set_size(header, LV_PCT(100), 25);
+  lv_obj_set_size(header, LV_PCT(100), 40);
   lv_obj_set_style_bg_opa(header, LV_OPA_TRANSP, NULL);
-  battery_bar(header);
+  // battery_bar(header);
+
+  /* Battery. */
+
+  lv_obj_t *cap = lv_obj_create(header);
+  lv_obj_set_size(cap, 4, 8);
+  lv_obj_set_style_bg_color(cap, lv_palette_main(LV_PALETTE_BLUE), NULL);
+  lv_obj_set_style_border_color(cap, lv_palette_main(LV_PALETTE_BLUE), NULL);
+  lv_obj_set_style_radius(cap, 2, NULL);
+  lv_obj_align_to(cap, header, LV_ALIGN_RIGHT_MID, 0, 0);
+
+
+  static lv_style_t style_bg;
+  static lv_style_t style_indic;
+  lv_style_init(&style_bg);
+  lv_style_set_border_color(&style_bg, lv_palette_main(LV_PALETTE_BLUE));
+  lv_style_set_border_width(&style_bg, 2);
+  lv_style_set_pad_all(&style_bg, 3); /*To make the indicator smaller*/
+  lv_style_set_radius(&style_bg, 6);
+
+  lv_style_init(&style_indic);
+  lv_style_set_bg_opa(&style_indic, LV_OPA_COVER);
+  lv_style_set_bg_color(&style_indic, lv_palette_main(LV_PALETTE_BLUE));
+  lv_style_set_radius(&style_indic, 4);
+  lv_style_set_border_side(&style_indic, LV_BORDER_SIDE_LEFT);
+
+  battery_percent = lv_bar_create(header);
+  lv_obj_remove_style_all(battery_percent); /*To have a clean start*/
+  lv_obj_add_style(battery_percent, &style_bg, NULL);
+  lv_obj_add_style(battery_percent, &style_indic, LV_PART_INDICATOR);
+  lv_obj_set_size(battery_percent, 40, 18);
+  lv_bar_set_range(battery_percent, 0, 100);
+  lv_bar_set_value(battery_percent, battery_percentage, LV_ANIM_OFF);
+  lv_obj_align_to(battery_percent, cap, LV_ALIGN_OUT_LEFT_MID, 0, 0);
+
+  lv_timer_create(check_battery_cb, 1000, NULL);
+
+
+
+
+
+
+
 
 
   lv_obj_t *home_row1 = lv_obj_create(home_main_col);
@@ -272,48 +315,28 @@ void check_battery_cb(lv_timer_t *t) {
   lv_bar_set_value(battery_percent, battery_percentage, LV_ANIM_ON);
 }
 
-void battery_bar(lv_obj_t *parent) {
-  lv_obj_t *battery = lv_obj_create(parent);
-  // lv_obj_remove_style_all(battery);
-  lv_obj_set_size(battery, 50, LV_SIZE_CONTENT);
-  lv_obj_set_flex_flow(battery, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(battery, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_bg_opa(battery, LV_OPA_TRANSP, NULL);
-  // lv_obj_set_style_pad_right(battery, 10, NULL);
-  lv_obj_align(battery, LV_ALIGN_RIGHT_MID, 0, 0);
+// void battery_bar(lv_obj_t *parent) {
+//   lv_style_t style_bg;
+//   lv_style_t style_indic;
 
-  static lv_style_t style_bg;
-  static lv_style_t style_indic;
+//   lv_style_init(&style_bg);
+//   lv_style_set_border_color(&style_bg, lv_palette_main(LV_PALETTE_BLUE));
+//   lv_style_set_border_width(&style_bg, 2);
+//   lv_style_set_pad_all(&style_bg, 4); /*To make the indicator smaller*/
+//   lv_style_set_radius(&style_bg, 6);
+//   // lv_style_set_anim_time(&style_bg, 1000);
 
-  lv_style_init(&style_bg);
-  lv_style_set_border_color(&style_bg, lv_color_hex(0x02022B));
-  lv_style_set_border_width(&style_bg, 2);
-  lv_style_set_pad_all(&style_bg, 0); /*To make the indicator smaller*/
-  lv_style_set_radius(&style_bg, 0);
-  lv_style_set_anim_time(&style_bg, 800);
+//   lv_style_init(&style_indic);
+//   lv_style_set_bg_opa(&style_indic, LV_OPA_COVER);
+//   lv_style_set_bg_color(&style_indic, lv_palette_main(LV_PALETTE_BLUE));
+//   lv_style_set_radius(&style_indic, 3);
 
-  lv_style_init(&style_indic);
-  lv_style_set_bg_opa(&style_indic, LV_OPA_COVER);
-  lv_style_set_bg_color(&style_indic, lv_color_white());
-  lv_style_set_radius(&style_indic, 6);
+//   lv_obj_t *bar = lv_obj_create(parent);
+//   lv_obj_remove_style_all(bar); /*To have a clean start*/
+//   lv_obj_add_style(bar, &style_bg, NULL);
+//   lv_obj_add_style(bar, &style_indic, LV_PART_INDICATOR);
 
-  battery_percent = lv_bar_create(battery);
-  // lv_obj_remove_style_all(battery_percent); /*To have a clean start*/
-  lv_obj_add_style(battery_percent, &style_bg, 0);
-  lv_obj_add_style(battery_percent, &style_indic, LV_PART_INDICATOR);
-  lv_obj_set_size(battery_percent, 45, 15);
-  lv_obj_center(battery_percent);
-  battery_percentage = watch.getBatteryPercent();
-  lv_bar_set_value(battery_percent, battery_percentage, LV_ANIM_OFF);
-
-
-  static lv_style_t br;
-  lv_style_init(&br);
-  lv_obj_t *cap = lv_obj_create(battery);
-  lv_obj_set_size(cap, 3, 6);
-  lv_obj_set_style_bg_color(cap, lv_color_white(), 0);
-  lv_obj_set_style_border_width(cap, 0, NULL);
-  lv_obj_set_style_radius(cap, 0, NULL);
-
-  lv_timer_create(check_battery_cb, 1000, NULL);
-}
+//   lv_obj_set_size(bar, 50, 20);
+//   lv_obj_center(bar);
+//   // lv_bar_set_value(bar, 80, LV_ANIM_OFF);
+// }
