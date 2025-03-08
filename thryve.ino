@@ -1,7 +1,7 @@
 #include <LilyGoLib.h>
 #include <LV_Helper.h>
 #include <WiFi.h>
-// #include "Thrive_Logo.h"
+#include "Thrive_Logo.h"
 // #if LV_USE_FLEX
 // #if LV_USE_IMG
 
@@ -42,9 +42,6 @@
 // LV_IMG_DECLARE(watch_if_6);
 // LV_IMG_DECLARE(watch_if_8);
 
-LV_IMG_DECLARE(recycle_symbol);
-LV_IMG_DECLARE(carbon_symbol);
-LV_IMG_DECLARE(speaking_symbol);
 
 
 #define LV_COLOR_WHITE LV_COLOR_MAKE(0xFF, 0xFF, 0xFF)
@@ -84,21 +81,53 @@ lv_obj_t *wifi_label;
 
 lv_obj_t *time_label = NULL;
 lv_obj_t *time_sec = NULL;
+lv_obj_t *date_label = NULL;
+const char *weekDays[] = { "SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT" };
+
+LV_IMG_DECLARE(recycle_symbol);
+LV_IMG_DECLARE(carbon_symbol);
+
+
+
+
+LV_IMG_DECLARE(settings_icon);
+LV_IMG_DECLARE(wifi_icon);
+LV_IMG_DECLARE(calendar_icon);
+LV_IMG_DECLARE(bluetooth_icon);
+
+
+typedef struct {
+  const int index;
+  const lv_img_dsc_t *img_src;
+  const uint32_t bg_color;
+} Menu;
+
+static Menu menus[] = {
+  { 2, &settings_icon, 0xCDC776 },
+  { 3, &calendar_icon, 0x89023E },
+  { 5, &bluetooth_icon, 0xFFD9DA }
+  { 4, &wifi_icon, 0xDBF4AD },
+};
+
+static const int MENU_SIZE = sizeof(menus) / sizeof(menus[0]);
 
 time_t now;
 struct tm timeinfo;
 lv_timer_t *clockTimer;
 
+
+
 void main_ui(void);
 // void battery_bar(lv_obj_t *parent);
 void check_battery_cb(lv_timer_t *t);
+void menu_page(void);
 extern "C" {
   void cta_block(lv_obj_t *parent, lv_coord_t arc_size, uint16_t img_zoom);
 };
 
 static lv_obj_t *view = NULL;
 static lv_obj_t *home_tile = NULL;
-static lv_obj_t *cta_tile = NULL;
+static lv_obj_t *menu_tile = NULL;
 
 void do_tick() {
   time_t now;
@@ -109,6 +138,11 @@ void do_tick() {
   lv_label_set_text_fmt(time_label, "%02d%:%02d%",
                         timeinfo.tm_hour,
                         timeinfo.tm_min);
+
+  lv_label_set_text_fmt(date_label, "  %02d/%02d %s",
+                        timeinfo.tm_mon,
+                        timeinfo.tm_mday,
+                        weekDays[timeinfo.tm_wday]);
 
   battery_percentage = watch.getBatteryPercent();
   usbPlugIn = watch.isVbusIn();
@@ -124,13 +158,62 @@ void tick_time_cb(lv_timer_t *t) {
 }
 
 
+void check_battery_cb(lv_timer_t *t) {
+  battery_percentage = watch.getBatteryPercent();
+  lv_bar_set_value(battery_percent, battery_percentage, LV_ANIM_ON);
+}
+
+static void scroll_event_cb(lv_event_t *e) {
+  lv_obj_t *cont = lv_event_get_target(e);
+
+  lv_area_t cont_a;
+  lv_obj_get_coords(cont, &cont_a);
+  lv_coord_t cont_y_center = cont_a.y1 + lv_area_get_height(&cont_a) / 2;
+
+  lv_coord_t r = lv_obj_get_height(cont) * 7 / 10;
+  uint32_t i;
+  uint32_t child_cnt = lv_obj_get_child_cnt(cont);
+  for (i = 0; i < child_cnt; i++) {
+    lv_obj_t *child = lv_obj_get_child(cont, i);
+    lv_area_t child_a;
+    lv_obj_get_coords(child, &child_a);
+
+    lv_coord_t child_y_center = child_a.y1 + lv_area_get_height(&child_a) / 2;
+
+    lv_coord_t diff_y = child_y_center - cont_y_center;
+    diff_y = LV_ABS(diff_y);
+
+    /*Get the x of diff_y on a circle.*/
+    lv_coord_t x;
+    /*If diff_y is out of the circle use the last point of the circle (the radius)*/
+    if (diff_y >= r) {
+      x = r;
+    } else {
+      /*Use Pythagoras theorem to get x from radius and y*/
+      uint32_t x_sqr = r * r - diff_y * diff_y;
+      lv_sqrt_res_t res;
+      lv_sqrt(x_sqr, &res, 0x8000); /*Use lvgl's built in sqrt root function*/
+      x = r - res.i;
+    }
+
+    /*Translate the item by the calculated X coordinate*/
+    lv_obj_set_style_translate_x(child, x, 0);
+
+    /*Use some opacity with larger translations*/
+    lv_opa_t opa = lv_map(x, 0, r, LV_OPA_TRANSP, LV_OPA_COVER);
+    lv_obj_set_style_opa(child, LV_OPA_COVER - opa, 0);
+  }
+}
+
+
+
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   watch.begin();
-  // watch.fillScreen(0x02022B);
-  // watch.pushImage(0, 0, THRIVE_LOGO_WIDTH, THRIVE_LOGO_HEIGHT, thrive_logo);
-  // delay(3000);
+  watch.fillScreen(0x02022B);
+  watch.pushImage(0, 0, THRIVE_LOGO_WIDTH, THRIVE_LOGO_HEIGHT, thrive_logo);
+  delay(3000);
   beginLvglHelper();
   time(&now);
   localtime_r(&now, &timeinfo);
@@ -144,10 +227,6 @@ void loop() {
   delay(5);
 
   bool screenTimeout = lv_disp_get_inactive_time(NULL) > DEFAULT_SCREEN_TIMEOUT;
-
-  // bool ideal = lv_disp_get_inactive_time(NULL) > HOME_SCREEN_TIMEOUT;
-
-  // if (ideal) lv_obj_set_tile(view, cta_tile, LV_ANIM_ON);
 
   while (screenTimeout && !watch.getTouched()) {
     int b = watch.getBrightness();
@@ -181,25 +260,19 @@ void main_ui() {
   view = lv_tileview_create(screen);
   lv_obj_set_style_bg_opa(view, LV_OPA_TRANSP, NULL);
   lv_obj_add_style(view, &style_scrolled, LV_PART_SCROLLBAR | LV_STATE_SCROLLED);
-
+  lv_obj_set_scrollbar_mode(view, LV_SCROLLBAR_MODE_OFF);
 
 
   /* All Tiles */
-  cta_tile = lv_tileview_add_tile(view, 0, 0, LV_DIR_RIGHT);
-  lv_obj_set_style_bg_opa(cta_tile, LV_OPA_TRANSP, NULL);
 
-  home_tile = lv_tileview_add_tile(view, 1, 0, LV_DIR_RIGHT);
+  home_tile = lv_tileview_add_tile(view, 0, 0, LV_DIR_RIGHT);
   lv_obj_set_style_bg_opa(home_tile, LV_OPA_TRANSP, NULL);
 
+  menu_tile = lv_tileview_add_tile(view, 1, 0, LV_DIR_LEFT);
+  lv_obj_set_style_bg_opa(menu_tile, LV_OPA_TRANSP, NULL);
+  menu_page();
 
 
-
-  /* Items in CTA Tiles */
-  lv_obj_t *cta_box = lv_obj_create(cta_tile);
-  lv_obj_remove_style_all(cta_box);
-  lv_obj_set_style_bg_opa(cta_box, LV_OPA_TRANSP, NULL);
-  lv_obj_set_size(cta_box, lv_pct(100), lv_pct(100));
-  lv_obj_set_style_pad_all(cta_box, 10, NULL);
   /* Items in HOME Tiles */
 
   /*Create a container with COLUMN flex direction*/
@@ -283,10 +356,9 @@ void main_ui() {
   lv_obj_set_flex_flow(home_row1, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(home_row1, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_bg_opa(home_row1, LV_OPA_TRANSP, NULL);
-  // lv_obj_set_style_pad_bottom(home_row1, 15, NULL);
   lv_obj_set_style_pad_top(home_row1, 0, NULL);
   lv_obj_set_style_border_opa(home_row1, 0, NULL);
-
+  lv_obj_set_scrollbar_mode(home_row1, LV_SCROLLBAR_MODE_OFF);
 
 
   /* The time text */
@@ -302,25 +374,18 @@ void main_ui() {
                         timeinfo.tm_hour,
                         timeinfo.tm_min);
 
-  // time_sec = lv_label_create(home_row1);
-  // lv_obj_add_style(time_sec, &timeStyle, NULL);
-  // lv_obj_set_style_pad_right(time_sec, 5, NULL);
-  // lv_obj_set_style_pad_bottom(time_sec, 5, NULL);
-  // lv_obj_set_style_text_font(time_sec, &lv_font_montserrat_18, NULL);
-  // lv_label_set_text_fmt(time_label, "%02d%", timeinfo.tm_sec);
-  // lv_obj_align_to(time_sec, time_label, LV_ALIGN_OUT_RIGHT_BOTTOM, -10, 0);
-
-
   static lv_style_t dateStyle;
   lv_style_init(&dateStyle);
   lv_style_set_text_color(&dateStyle, lv_color_hex(0xE27E13));
   lv_style_set_text_font(&dateStyle, &lv_font_montserrat_18);
 
-  lv_obj_t *date_label = lv_label_create(home_row1);
+  date_label = lv_label_create(home_row1);
   lv_obj_remove_style_all(date_label);
   lv_obj_align(date_label, LV_ALIGN_RIGHT_MID, 0, 0);
   lv_obj_add_style(date_label, &dateStyle, NULL);
   lv_label_set_text(date_label, "07/17 SAT");
+
+
 
 
 
@@ -341,33 +406,44 @@ void main_ui() {
 }
 
 
-void check_battery_cb(lv_timer_t *t) {
-  battery_percentage = watch.getBatteryPercent();
-  lv_bar_set_value(battery_percent, battery_percentage, LV_ANIM_ON);
+void menu_page() {
+  lv_obj_t *cont = lv_obj_create(menu_tile);
+  lv_obj_set_size(cont, lv_pct(100), lv_pct(100));
+  lv_obj_center(cont);
+  lv_obj_set_style_bg_opa(cont, LV_OPA_TRANSP, NULL);
+  lv_obj_set_style_pad_left(cont, 50, NULL);
+  lv_obj_set_style_border_opa(cont, 0, NULL);
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_add_event_cb(cont, scroll_event_cb, LV_EVENT_SCROLL, NULL);
+  // lv_obj_set_style_radius(cont, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_clip_corner(cont, false, 0);
+  lv_obj_set_scroll_dir(cont, LV_DIR_VER);
+  lv_obj_set_scroll_snap_y(cont, LV_SCROLL_SNAP_CENTER);
+  lv_obj_set_scrollbar_mode(cont, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_add_flag(cont, LV_OBJ_FLAG_SCROLL_ONE);
+
+  uint32_t i;
+  for (i = 0; i < MENU_SIZE; i++) {
+    lv_obj_t *btn = lv_btn_create(cont);
+    // lv_obj_remove_style_all(btn);
+    lv_obj_set_style_pad_all(btn, 0, 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(menus[i].bg_color), 0);
+    lv_obj_set_size(btn, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_radius(btn, lv_pct(100), NULL);
+
+    lv_obj_t *img = lv_img_create(btn);
+    lv_img_set_src(img, menus[i].img_src);
+    lv_img_set_zoom(img, (0.6 * 256));
+    lv_obj_center(img);
+
+    lv_obj_t *label = lv_label_create(btn);
+    lv_obj_align(label, LV_ALIGN_OUT_RIGHT_MID, 50, 25);
+    lv_label_set_text_fmt(label, "Button %" LV_PRIu32, i);
+  }
+
+  /*Update the buttons position manually for first*/
+  lv_event_send(cont, LV_EVENT_SCROLL, NULL);
+
+  /*Be sure the fist button is in the middle*/
+  lv_obj_scroll_to_view(lv_obj_get_child(cont, 0), LV_ANIM_ON);
 }
-
-// void battery_bar(lv_obj_t *parent) {
-//   lv_style_t style_bg;
-//   lv_style_t style_indic;
-
-//   lv_style_init(&style_bg);
-//   lv_style_set_border_color(&style_bg, lv_palette_main(LV_PALETTE_BLUE));
-//   lv_style_set_border_width(&style_bg, 2);
-//   lv_style_set_pad_all(&style_bg, 4); /*To make the indicator smaller*/
-//   lv_style_set_radius(&style_bg, 6);
-//   // lv_style_set_anim_time(&style_bg, 1000);
-
-//   lv_style_init(&style_indic);
-//   lv_style_set_bg_opa(&style_indic, LV_OPA_COVER);
-//   lv_style_set_bg_color(&style_indic, lv_palette_main(LV_PALETTE_BLUE));
-//   lv_style_set_radius(&style_indic, 3);
-
-//   lv_obj_t *bar = lv_obj_create(parent);
-//   lv_obj_remove_style_all(bar); /*To have a clean start*/
-//   lv_obj_add_style(bar, &style_bg, NULL);
-//   lv_obj_add_style(bar, &style_indic, LV_PART_INDICATOR);
-
-//   lv_obj_set_size(bar, 50, 20);
-//   lv_obj_center(bar);
-//   // lv_bar_set_value(bar, 80, LV_ANIM_OFF);
-// }
