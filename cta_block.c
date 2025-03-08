@@ -5,6 +5,7 @@
 LV_IMG_DECLARE(recycle_symbol);
 LV_IMG_DECLARE(carbon_symbol);
 LV_IMG_DECLARE(speaking_symbol);
+LV_IMG_DECLARE(go_green);
 
 typedef struct {
   const char *label_text;
@@ -16,8 +17,8 @@ typedef struct {
 
 static cta_data ctas[] = {
   { "Stop burning bushes", &recycle_symbol, 0x003390, NULL, NULL },
-  { "Go green", &carbon_symbol, 0xff3493, NULL, NULL },
-  { "Speak out", &speaking_symbol, 0xef4393, NULL, NULL },
+  { "Go green", &go_green, 0xff3493, NULL, NULL },
+  { "Speak out", &carbon_symbol, 0xef4393, NULL, NULL },
 };
 
 int SIZE_OF_CTA = sizeof(ctas) / sizeof(ctas[0]);
@@ -94,7 +95,7 @@ void cta_block(lv_obj_t *parent, lv_coord_t arc_size, uint16_t img_zoom) {
     lv_obj_set_style_text_color(label, lv_color_white(), NULL);
     lv_obj_set_style_text_font(label, &lv_font_montserrat_20, NULL);
     lv_obj_center(label);
-    lv_obj_align_to(label, parent, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_label_set_text_fmt(label, "%s%", ctas[i].label_text);
 
     ctas[i].label = label;
@@ -113,7 +114,7 @@ void cta_block(lv_obj_t *parent, lv_coord_t arc_size, uint16_t img_zoom) {
 
 
 
-  lv_timer_t *timer = lv_timer_create(update_cta_cb, 60100, &index);
+  lv_timer_t *timer = lv_timer_create(update_cta_cb, 60000, &index);
 }
 
 #endif

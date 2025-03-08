@@ -1,6 +1,7 @@
 #include <LilyGoLib.h>
 #include <LV_Helper.h>
 #include <WiFi.h>
+// #include "Thrive_Logo.h"
 // #if LV_USE_FLEX
 // #if LV_USE_IMG
 
@@ -114,7 +115,10 @@ void tick_time_cb(lv_timer_t *t) {
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
-  watch.begin(&Serial);
+  watch.begin();
+  // watch.fillScreen(0x02022B);
+  // watch.pushImage(0, 0, THRIVE_LOGO_WIDTH, THRIVE_LOGO_HEIGHT, thrive_logo);
+  // delay(3000);
   beginLvglHelper();
   time(&now);
   localtime_r(&now, &timeinfo);
@@ -270,8 +274,8 @@ void check_battery_cb(lv_timer_t *t) {
 
 void battery_bar(lv_obj_t *parent) {
   lv_obj_t *battery = lv_obj_create(parent);
-  lv_obj_remove_style_all(battery);
-  lv_obj_set_size(battery, 45, LV_SIZE_CONTENT);
+  // lv_obj_remove_style_all(battery);
+  lv_obj_set_size(battery, 50, LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(battery, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(battery, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_bg_opa(battery, LV_OPA_TRANSP, NULL);
