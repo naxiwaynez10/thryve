@@ -66,7 +66,8 @@ void cta_block(lv_obj_t *parent, lv_coord_t arc_size, uint16_t img_zoom) {
     lv_obj_set_style_arc_color(arc, lv_color_hex(ctas[i].arc_color), LV_PART_INDICATOR | LV_STATE_DEFAULT);
     lv_obj_add_style(arc, &noPadding, LV_PART_INDICATOR | LV_PART_MAIN);
     lv_obj_set_style_arc_color(arc, lv_color_hex(0x440), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_center(arc);
+    // lv_obj_center(arc);
+    lv_obj_align(arc, LV_ALIGN_CENTER, 0, -15);
 
 
     lv_anim_t a;
@@ -90,11 +91,10 @@ void cta_block(lv_obj_t *parent, lv_coord_t arc_size, uint16_t img_zoom) {
 
 
     lv_obj_t *label = lv_label_create(parent);
+    lv_obj_remove_style_all(label);
     lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL);
-    lv_obj_set_width(label, lv_pct(100));
     lv_obj_set_style_text_color(label, lv_color_white(), NULL);
     lv_obj_set_style_text_font(label, &lv_font_montserrat_20, NULL);
-    lv_obj_center(label);
     lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_label_set_text_fmt(label, "%s%", ctas[i].label_text);
 

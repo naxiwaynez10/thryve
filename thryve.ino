@@ -77,7 +77,8 @@ static RTC_DATA_ATTR int brightnessLevel = 0;
 
 static int battery_percentage;
 lv_obj_t *battery_percent;
-
+lv_obj_t *charging_icon;
+lv_obj_t *wifi_label;
 
 
 
@@ -99,16 +100,27 @@ static lv_obj_t *view = NULL;
 static lv_obj_t *home_tile = NULL;
 static lv_obj_t *cta_tile = NULL;
 
-
-void tick_time_cb(lv_timer_t *t) {
+void do_tick() {
   time_t now;
   struct tm timeinfo;
   time(&now);
   localtime_r(&now, &timeinfo);
-  lv_label_set_text_fmt(time_sec, "%02d%", timeinfo.tm_sec);
+  // lv_label_set_text_fmt(time_sec, "%02d%", timeinfo.tm_sec);
   lv_label_set_text_fmt(time_label, "%02d%:%02d%",
                         timeinfo.tm_hour,
                         timeinfo.tm_min);
+
+  battery_percentage = watch.getBatteryPercent();
+  usbPlugIn = watch.isVbusIn();
+  if (usbPlugIn) {
+    lv_obj_clear_flag(charging_icon, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(charging_icon, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void tick_time_cb(lv_timer_t *t) {
+  do_tick();
 }
 
 
@@ -122,9 +134,8 @@ void setup() {
   beginLvglHelper();
   time(&now);
   localtime_r(&now, &timeinfo);
-  battery_percentage = watch.getBatteryPercent();
   main_ui();
-  usbPlugIn = watch.isVbusIn();
+  do_tick();
 }
 
 void loop() {
@@ -133,9 +144,10 @@ void loop() {
   delay(5);
 
   bool screenTimeout = lv_disp_get_inactive_time(NULL) > DEFAULT_SCREEN_TIMEOUT;
-  bool ideal = lv_disp_get_inactive_time(NULL) > HOME_SCREEN_TIMEOUT;
 
-  if (ideal) lv_obj_set_tile(view, cta_tile, LV_ANIM_ON);
+  // bool ideal = lv_disp_get_inactive_time(NULL) > HOME_SCREEN_TIMEOUT;
+
+  // if (ideal) lv_obj_set_tile(view, cta_tile, LV_ANIM_ON);
 
   while (screenTimeout && !watch.getTouched()) {
     int b = watch.getBrightness();
@@ -188,46 +200,51 @@ void main_ui() {
   lv_obj_set_style_bg_opa(cta_box, LV_OPA_TRANSP, NULL);
   lv_obj_set_size(cta_box, lv_pct(100), lv_pct(100));
   lv_obj_set_style_pad_all(cta_box, 10, NULL);
-  lv_obj_set_flex_flow(cta_box, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cta_box, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   /* Items in HOME Tiles */
 
   /*Create a container with COLUMN flex direction*/
   lv_obj_t *home_main_col = lv_obj_create(home_tile);
   lv_obj_remove_style_all(home_main_col);
   lv_obj_set_size(home_main_col, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_style_pad_hor(home_main_col, 10, NULL);
+  lv_obj_set_style_pad_hor(home_main_col, 5, NULL);
   lv_obj_align_to(home_main_col, home_tile, LV_ALIGN_CENTER, 0, 0);
   lv_obj_set_flex_flow(home_main_col, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_bg_opa(home_main_col, LV_OPA_TRANSP, NULL);
 
   lv_obj_t *header = lv_obj_create(home_main_col);
   lv_obj_remove_style_all(header);
-  lv_obj_set_size(header, LV_PCT(100), 40);
+  lv_obj_set_size(header, LV_PCT(100), 25);
   lv_obj_set_style_bg_opa(header, LV_OPA_TRANSP, NULL);
   // battery_bar(header);
 
-  /* Battery. */
 
+  /* Wifi */
+  wifi_label = lv_label_create(header);
+  lv_obj_align_to(wifi_label, header, LV_ALIGN_LEFT_MID, 10, 0);
+  lv_label_set_text(wifi_label, LV_SYMBOL_WIFI);
+  lv_obj_set_style_text_color(wifi_label, lv_color_white(), NULL);
+
+
+  /* Battery. */
   lv_obj_t *cap = lv_obj_create(header);
   lv_obj_set_size(cap, 4, 8);
-  lv_obj_set_style_bg_color(cap, lv_palette_main(LV_PALETTE_BLUE), NULL);
-  lv_obj_set_style_border_color(cap, lv_palette_main(LV_PALETTE_BLUE), NULL);
+  lv_obj_set_style_bg_color(cap, lv_color_white(), NULL);
+  lv_obj_set_style_border_color(cap, lv_color_white(), NULL);
   lv_obj_set_style_radius(cap, 2, NULL);
-  lv_obj_align_to(cap, header, LV_ALIGN_RIGHT_MID, 0, 0);
+  lv_obj_align_to(cap, header, LV_ALIGN_RIGHT_MID, -10, 0);
 
 
   static lv_style_t style_bg;
   static lv_style_t style_indic;
   lv_style_init(&style_bg);
-  lv_style_set_border_color(&style_bg, lv_palette_main(LV_PALETTE_BLUE));
+  lv_style_set_border_color(&style_bg, lv_color_white());
   lv_style_set_border_width(&style_bg, 2);
   lv_style_set_pad_all(&style_bg, 3); /*To make the indicator smaller*/
   lv_style_set_radius(&style_bg, 6);
 
   lv_style_init(&style_indic);
   lv_style_set_bg_opa(&style_indic, LV_OPA_COVER);
-  lv_style_set_bg_color(&style_indic, lv_palette_main(LV_PALETTE_BLUE));
+  lv_style_set_bg_color(&style_indic, lv_color_white());
   lv_style_set_radius(&style_indic, 4);
   lv_style_set_border_side(&style_indic, LV_BORDER_SIDE_LEFT);
 
@@ -240,6 +257,15 @@ void main_ui() {
   lv_bar_set_value(battery_percent, battery_percentage, LV_ANIM_OFF);
   lv_obj_align_to(battery_percent, cap, LV_ALIGN_OUT_LEFT_MID, 0, 0);
 
+  /* Charging */
+  charging_icon = lv_label_create(battery_percent);
+  lv_obj_center(charging_icon);
+  lv_obj_set_size(charging_icon, LV_SIZE_CONTENT, 12);
+  lv_label_set_text(charging_icon, LV_SYMBOL_CHARGE);
+  lv_obj_set_style_text_color(charging_icon, lv_color_black(), NULL);
+
+
+
   lv_timer_create(check_battery_cb, 1000, NULL);
 
 
@@ -251,13 +277,14 @@ void main_ui() {
 
 
   lv_obj_t *home_row1 = lv_obj_create(home_main_col);
-  lv_obj_remove_style_all(home_row1);
+  // lv_obj_remove_style_all(home_row1);
   lv_obj_set_size(home_row1, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_align(home_row1, LV_ALIGN_TOP_MID, 0, 0);
   lv_obj_set_flex_flow(home_row1, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(home_row1, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_flex_align(home_row1, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_bg_opa(home_row1, LV_OPA_TRANSP, NULL);
-  lv_obj_set_style_pad_hor(home_row1, 10, NULL);
+  // lv_obj_set_style_pad_bottom(home_row1, 15, NULL);
+  lv_obj_set_style_pad_top(home_row1, 0, NULL);
   lv_obj_set_style_border_opa(home_row1, 0, NULL);
 
 
@@ -275,23 +302,27 @@ void main_ui() {
                         timeinfo.tm_hour,
                         timeinfo.tm_min);
 
-  time_sec = lv_label_create(home_row1);
-  lv_obj_add_style(time_sec, &timeStyle, NULL);
-  lv_obj_set_style_pad_right(time_sec, 5, NULL);
-  lv_obj_set_style_pad_bottom(time_sec, 5, NULL);
-  lv_obj_set_style_text_font(time_sec, &lv_font_montserrat_18, NULL);
-  lv_label_set_text_fmt(time_label, "%02d%", timeinfo.tm_sec);
-  lv_obj_align_to(time_sec, time_label, LV_ALIGN_OUT_RIGHT_BOTTOM, -10, 0);
+  // time_sec = lv_label_create(home_row1);
+  // lv_obj_add_style(time_sec, &timeStyle, NULL);
+  // lv_obj_set_style_pad_right(time_sec, 5, NULL);
+  // lv_obj_set_style_pad_bottom(time_sec, 5, NULL);
+  // lv_obj_set_style_text_font(time_sec, &lv_font_montserrat_18, NULL);
+  // lv_label_set_text_fmt(time_label, "%02d%", timeinfo.tm_sec);
+  // lv_obj_align_to(time_sec, time_label, LV_ALIGN_OUT_RIGHT_BOTTOM, -10, 0);
 
 
   static lv_style_t dateStyle;
   lv_style_init(&dateStyle);
   lv_style_set_text_color(&dateStyle, lv_color_hex(0xE27E13));
-  lv_style_set_text_font(&dateStyle, &lv_font_montserrat_20);
+  lv_style_set_text_font(&dateStyle, &lv_font_montserrat_18);
+
   lv_obj_t *date_label = lv_label_create(home_row1);
-  lv_obj_set_style_pad_bottom(date_label, 5, NULL);
+  lv_obj_remove_style_all(date_label);
+  lv_obj_align(date_label, LV_ALIGN_RIGHT_MID, 0, 0);
   lv_obj_add_style(date_label, &dateStyle, NULL);
-  lv_label_set_text(date_label, "07/17");
+  lv_label_set_text(date_label, "07/17 SAT");
+
+
 
   lv_obj_t *home_row2 = lv_obj_create(home_main_col);
   lv_obj_remove_style_all(home_row2);
@@ -299,8 +330,8 @@ void main_ui() {
   lv_obj_set_flex_flow(home_row2, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(home_row2, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
+  // cta_block(cta_box, 180, 3);
   cta_block(home_row2, 120, 2);
-  cta_block(cta_box, 180, 3);
 
 
 
