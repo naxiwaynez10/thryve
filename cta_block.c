@@ -24,13 +24,7 @@ static cta_data ctas[] = {
 int SIZE_OF_CTA = sizeof(ctas) / sizeof(ctas[0]);
 static int current_index = 0;
 
-// typedef struct {
-//   lv_obj_t *label;
-//   lv_obj_t *arc;
-// } cta_obj;
 
-// static cta_obj obj_1[3];
-// static cta_obj obj_2[3];
 
 
 void update_cta_cb(lv_timer_t *t) {
