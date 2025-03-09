@@ -94,13 +94,24 @@ const char *minute_opts =
   "50\n51\n52\n53\n54\n55\n56\n57\n58\n59";
 
 const char *day_names[7] = { "S", "M", "T", "W", "T", "F", "S" };
+static lv_calendar_date_t selected_days[3];
+
+
+// typedef struct {
+//   const uint32_t hour;
+//   const uint32_t minute;
+// } DateTime;
+
+static tm set_time;
+
+
 
 void main_ui(void);
 // void battery_bar(lv_obj_t *parent);
 void check_battery_cb(lv_timer_t *t);
 void menu_page(void);
 void menu_clicked_cb(lv_event_t *e);
-
+void save_date_time_cb(lv_event_t *);
 
 extern "C" {
   void cta_block(lv_obj_t *parent, lv_coord_t arc_size, uint16_t img_zoom);
@@ -487,6 +498,9 @@ void date_time_settings(lv_obj_t *parent) {
   struct tm timeinfo;
   time(&now);
   localtime_r(&now, &timeinfo);
+  set_time.tm_hour = timeinfo.tm_hour;
+  set_time.tm_min = timeinfo.tm_min;
+  set_time.tm_sec = timeinfo.tm_sec;
 
   static lv_style_t style_sel;
   lv_style_init(&style_sel);
@@ -566,6 +580,7 @@ void date_time_settings(lv_obj_t *parent) {
 
   lv_obj_t *btn = lv_btn_create(parent);
   lv_obj_set_size(btn, lv_pct(100), 50);
+  lv_obj_add_event_cb(btn, save_date_time_cb, LV_EVENT_CLICKED, NULL);
 
   lv_obj_t *text = lv_label_create(btn);
   lv_label_set_text(text, "Save settings");
@@ -574,7 +589,6 @@ void date_time_settings(lv_obj_t *parent) {
 
 
 
-static lv_calendar_date_t selected_days[3];
 
 static void event_handler(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
@@ -608,9 +622,22 @@ void calender_ui(lv_obj_t *parent) {
   lv_calendar_set_today_date(calendar, (timeinfo.tm_year + 1900), timeinfo.tm_mday, timeinfo.tm_wday);
   lv_calendar_set_showed_date(calendar, (timeinfo.tm_year + 1900), timeinfo.tm_mday);
 
+  selected_days[0].year = (timeinfo.tm_year + 1900);
+  selected_days[0].month = timeinfo.tm_mday;
+  selected_days[0].day = timeinfo.tm_wday;
+  lv_calendar_set_highlighted_dates(calendar, selected_days, 1);
+
 #if LV_USE_CALENDAR_HEADER_DROPDOWN
   lv_calendar_header_dropdown_create(calendar);
 #elif LV_USE_CALENDAR_HEADER_ARROW
   lv_calendar_header_arrow_create(calendar);
 #endif
+}
+
+
+void save_date_time_cb(lv_event_t *) {
+
+  watch.setDateTime(selected_days[0].year, selected_days[0].month, selected_days[0].day, set_time.tm_hour, set_time.tm_min, set_time.tm_sec);
+  // Reading time synchronization from RTC to system time
+  watch.hwClockRead();
 }
