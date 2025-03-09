@@ -81,7 +81,7 @@ struct tm timeinfo;
 lv_timer_t *clockTimer;
 
 static lv_obj_t *hour;
-static lv_obj_t *mininute;
+static lv_obj_t *minute;
 static lv_obj_t *box;
 const char *hour_opts = "1\n2\n3\n4\n5\n6\n7\n8\n9\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24";
 
@@ -272,7 +272,9 @@ void main_ui() {
 
   menu_tile = lv_tileview_add_tile(view, 1, 0, LV_DIR_LEFT);
   lv_obj_set_style_bg_opa(menu_tile, LV_OPA_TRANSP, NULL);
+
   menu_page();
+
 
 
   /* All should be to the right so its not swippable */
@@ -477,8 +479,9 @@ void date_ui() {
   lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(col, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
   lv_obj_add_style(col, &style, NULL);
-  date_time_settings(col);
   lv_obj_set_scrollbar_mode(col, LV_SCROLLBAR_MODE_OFF);
+  back_btn(col);
+  date_time_settings(col);
 }
 
 
@@ -488,6 +491,12 @@ static void time_settings_cb(lv_event_t *e) {
   if (code == LV_EVENT_VALUE_CHANGED) {
     char buf[32];
     lv_roller_get_selected_str(obj, buf, sizeof(buf));
+    if (obj == hour) {
+      set_time.tm_hour = (int)buf;
+    }
+    if (obj == minute) {
+      set_time.tm_min = (int)buf;
+    }
     LV_LOG_USER("Selected value: %s", buf);
   }
 }
@@ -557,12 +566,12 @@ void date_time_settings(lv_obj_t *parent) {
   lv_obj_t *separator_label = lv_label_create(box);
   lv_label_set_text(separator_label, ":");
 
-  mininute = lv_roller_create(box);
-  lv_roller_set_options(mininute, minute_opts, LV_ROLLER_MODE_NORMAL);
-  lv_roller_set_visible_row_count(mininute, 3);
-  lv_obj_add_style(mininute, &style_sel, LV_PART_SELECTED);
-  lv_obj_add_event_cb(mininute, time_settings_cb, LV_EVENT_ALL, NULL);
-  lv_roller_set_selected(mininute, timeinfo.tm_min, LV_ANIM_OFF);
+  minute = lv_roller_create(box);
+  lv_roller_set_options(minute, minute_opts, LV_ROLLER_MODE_NORMAL);
+  lv_roller_set_visible_row_count(minute, 3);
+  lv_obj_add_style(minute, &style_sel, LV_PART_SELECTED);
+  lv_obj_add_event_cb(minute, time_settings_cb, LV_EVENT_ALL, NULL);
+  lv_roller_set_selected(minute, timeinfo.tm_min, LV_ANIM_OFF);
 
 
 
@@ -640,4 +649,29 @@ void save_date_time_cb(lv_event_t *) {
   watch.setDateTime(selected_days[0].year, selected_days[0].month, selected_days[0].day, set_time.tm_hour, set_time.tm_min, set_time.tm_sec);
   // Reading time synchronization from RTC to system time
   watch.hwClockRead();
+}
+
+
+
+void go_back_cb(lv_event_t *e) {
+  lv_obj_t *current_tile = lv_tileview_get_tile_act(view);
+  if (current_tile != menu_tile) lv_obj_set_tile(view, menu_tile, LV_ANIM_ON);
+}
+
+
+void back_btn(lv_obj_t *parent) {
+  lv_obj_t *con = lv_obj_create(parent);
+  lv_obj_remove_style_all(con);
+  lv_obj_set_size(con, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_set_style_border_opa(con, 0, NULL);
+  lv_obj_set_style_bg_opa(con, LV_OPA_TRANSP, 0);
+
+  lv_obj_t *btn = lv_btn_create(con);
+  lv_obj_align(btn, LV_ALIGN_LEFT_MID, 0, 0);
+  lv_obj_set_size(btn, 30, 30);
+  lv_obj_add_event_cb(btn, go_back_cb, LV_EVENT_CLICKED, NULL);
+
+  lv_obj_t *img = lv_label_create(btn);
+  lv_label_set_text(img, LV_SYMBOL_LEFT);
+  lv_obj_center(img);
 }
