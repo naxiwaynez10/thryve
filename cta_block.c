@@ -1,11 +1,17 @@
 #include <lvgl.h>
-
 #if LV_USE_ARC
 
 LV_IMG_DECLARE(recycle_symbol);
-LV_IMG_DECLARE(carbon_symbol);
-LV_IMG_DECLARE(speaking_symbol);
-LV_IMG_DECLARE(go_green);
+LV_IMG_DECLARE(reduce_emmisions_symbol);
+LV_IMG_DECLARE(go_green_travels_symbol);
+LV_IMG_DECLARE(bush_burning_symbol);
+LV_IMG_DECLARE(plant_more_tress_symbol);
+LV_IMG_DECLARE(stop_Industrial_waste_symbol);
+LV_IMG_DECLARE(speakup_symbol);
+LV_IMG_DECLARE(eat_more_vegetables_symbol);
+LV_IMG_DECLARE(dont_build_accross_drains_symbol);
+LV_IMG_DECLARE(manage_waste_symbol);
+
 
 typedef struct {
   const char *label_text;
@@ -16,9 +22,16 @@ typedef struct {
 } cta_data;
 
 static cta_data ctas[] = {
-  { "Stop burning bushes", &recycle_symbol, 0x003390, NULL, NULL },
-  { "Go green", &go_green, 0xff3493, NULL, NULL },
-  { "Speak out", &carbon_symbol, 0xef4393, NULL, NULL },
+  { "Reuse, Repair, Recycle", &recycle_symbol, 0x17EA8B, NULL, NULL },
+  { "Go green Travels", &go_green_travels_symbol, 0xB9EFB7, NULL, NULL },
+  { "Reduce Emmisions", &reduce_emmisions_symbol, 0x7C80FF, NULL, NULL },
+  { "Stop bush burning", &bush_burning_symbol, 0xFFF0F5, NULL, NULL },
+  { "Eat more vegetables", &eat_more_vegetables_symbol, 0xFF7C7C, NULL, NULL },
+  { "Don't build accross drains", &dont_build_accross_drains_symbol, 0xFF7CDA, NULL, NULL },
+  { "Manage waste", &manage_waste_symbol, 0xEE8F6C, NULL, NULL },
+  { "Speak up", &speakup_symbol, 0x7C92FF, NULL, NULL },
+  { "Plant more trees", &plant_more_tress_symbol, 0x4FFFE2, NULL, NULL },
+  { "Stop industrial waste", &stop_Industrial_waste_symbol, 0xE6E6FA, NULL, NULL },
 };
 
 int SIZE_OF_CTA = sizeof(ctas) / sizeof(ctas[0]);
@@ -86,6 +99,7 @@ void cta_block(lv_obj_t *parent, lv_coord_t arc_size, uint16_t img_zoom) {
 
     lv_obj_t *label = lv_label_create(parent);
     lv_obj_remove_style_all(label);
+    // lv_obj_set_style_width(label, lv_pct(100), NULL);
     lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL);
     lv_obj_set_style_text_color(label, lv_color_white(), NULL);
     lv_obj_set_style_text_font(label, &lv_font_montserrat_20, NULL);

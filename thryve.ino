@@ -1,10 +1,15 @@
+#include <WiFi.h>
 #include <LilyGoLib.h>
 #include <LV_Helper.h>
-#include <WiFi.h>
 #include "Thrive_Logo.h"
+#include <Preferences.h>
+#include <time.h>
+#include <sntp.h>
+Preferences prefs;
 // #if LV_USE_FLEX
 // #if LV_USE_IMG
 
+#define MAX_NETWORKS 10  // Max WiFi networks to display
 #define DEFAULT_SCREEN_TIMEOUT 30 * 1000
 #define HOME_SCREEN_TIMEOUT 10 * 1000
 #define DEFAULT_COLOR (lv_color_make(252, 218, 72))
@@ -49,8 +54,7 @@ lv_obj_t *time_sec = NULL;
 lv_obj_t *date_label = NULL;
 const char *weekDays[] = { "SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT" };
 
-LV_IMG_DECLARE(recycle_symbol);
-LV_IMG_DECLARE(carbon_symbol);
+
 
 
 
@@ -74,17 +78,26 @@ static Menu menus[] = {
   { 3, &wifi_icon, 0xDBF4AD }
 };
 
+
+
 static const int MENU_SIZE = sizeof(menus) / sizeof(menus[0]);
 
 time_t now;
 struct tm timeinfo;
 lv_timer_t *clockTimer;
+const char *ntpServer1 = "pool.ntp.org";
+const char *ntpServer2 = "time.nist.gov";
+const long gmtOffset_sec = 3600;
+const int daylightOffset_sec = 3600;
+
+const char *time_zone = "WAT-1";  // TimeZone rule for Europe/Rome including daylight adjustment rules (optional)
+
 
 static lv_obj_t *hour;
 static lv_obj_t *minute;
 static lv_obj_t *box;
 const char *hour_opts = "1\n2\n3\n4\n5\n6\n7\n8\n9\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24";
-
+static const char * years_list = "2028\n2027\n2026\n2025\n2024\n2023\n2022\n2021\n2020\n2019\n2018";
 const char *minute_opts =
   "00\n01\n02\n03\n04\n05\n06\n07\n08\n09\n"
   "10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n"
@@ -112,10 +125,11 @@ void check_battery_cb(lv_timer_t *t);
 void menu_page(void);
 void menu_clicked_cb(lv_event_t *e);
 void save_date_time_cb(lv_event_t *);
+void wifi_input_ui(lv_obj_t *parent);
 
 extern "C" {
   void cta_block(lv_obj_t *parent, lv_coord_t arc_size, uint16_t img_zoom);
-  // void date_time_settings(lv_obj_t *parent);
+  // void wifi_input_ui(lv_obj_t *parent);
 };
 
 static lv_obj_t *view = NULL;
@@ -123,8 +137,17 @@ static lv_obj_t *home_tile = NULL;
 static lv_obj_t *menu_tile = NULL;
 static lv_obj_t *date_tile = NULL;
 static lv_obj_t *wifi_tile = NULL;
+static lv_obj_t *wifi_input_tile = NULL;
+static lv_obj_t *bluetooth_tile = NULL;
 static lv_obj_t *settings_tile = NULL;
 lv_obj_t *home_main_col = NULL;
+lv_obj_t *wifi_table;
+lv_obj_t *wifi_dropdown;
+lv_obj_t *wifi_scan_btn;
+
+const char *ssid = NULL;    // Change this to your WiFi SSID
+const char *password = "";  // Change this to your WiFi password
+lv_obj_t *wifi_status_label;
 
 
 void do_tick() {
@@ -153,6 +176,13 @@ void do_tick() {
 
 void tick_time_cb(lv_timer_t *t) {
   do_tick();
+}
+
+void timeavailable(struct timeval *t) {
+  Serial.println("Got time adjustment from NTP, Write the hardware clock");
+
+  // Write synchronization time to hardware
+  watch.hwClockWrite();
 }
 
 
@@ -205,22 +235,65 @@ static void scroll_event_cb(lv_event_t *e) {
 
 void menu_clicked_cb(lv_event_t *e) {
   uint32_t id = (uint32_t)lv_event_get_user_data(e);
-  lv_obj_set_tile_id(view, 2, id, LV_ANIM_ON);
+  lv_obj_set_tile_id(view, 2, id, LV_ANIM_OFF);
 }
+
+void swip_left_cb(lv_event_t *e) {
+  lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
+  LV_LOG("Moved left");
+  Serial.print("left draw");
+  if (dir == LV_DIR_RIGHT) {
+    lv_obj_set_tile(view, menu_tile, LV_ANIM_OFF);
+  }
+}
+
+void on_tile_changed(lv_event_t *e) {
+  lv_obj_t *act_tile = lv_tileview_get_tile_act(view);
+  if (act_tile != wifi_tile) {
+    // lv_obj_del(wifi_table);
+    // lv_obj_clear_flag(wifi_scan_btn, LV_OBJ_FLAG_HIDDEN);
+  }
+  // lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
+  // Serial.println(dir);
+  // if (act_tile != home_tile && act_tile != menu_tile ) {
+  //   lv_obj_set_tile(view, menu_tile, LV_ANIM_OFF);
+  // }
+}
+
+
+
 
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
+  prefs.begin("wifi", false);
   watch.begin();
   watch.fillScreen(0x02022B);
   watch.pushImage(0, 0, THRIVE_LOGO_WIDTH, THRIVE_LOGO_HEIGHT, thrive_logo);
   delay(3000);
   beginLvglHelper();
+  sntp_set_time_sync_notification_cb(timeavailable);
+  configTzTime(time_zone, ntpServer1, ntpServer2);
+  // while (WiFi.status() != WL_CONNECTED) {
+  //   delay(5);
+  //   Serial.print(".");
+  // }
   time(&now);
   localtime_r(&now, &timeinfo);
   main_ui();
   do_tick();
+  String s = prefs.getString("ssid", "Redmi 10");
+  String p = prefs.getString("password", "nas");
+  ssid = s.c_str();
+  password = p.c_str();
+  Serial.printf("ssid: %s pass: %s", ssid, password);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(5);
+    lv_task_handler();
+    Serial.print(".");
+  }
 }
 
 void loop() {
@@ -234,6 +307,7 @@ void loop() {
     int b = watch.getBrightness();
     brightnessLevel = b > 0 ? b : brightnessLevel;
     watch.decrementBrightness(0);
+    // sleep();
   }
   if (watch.getTouched()) lv_disp_trig_activity(NULL);
   watch.incrementalBrightness(brightnessLevel);
@@ -263,6 +337,7 @@ void main_ui() {
   lv_obj_set_style_bg_opa(view, LV_OPA_TRANSP, NULL);
   lv_obj_add_style(view, &style_scrolled, LV_PART_SCROLLBAR | LV_STATE_SCROLLED);
   lv_obj_set_scrollbar_mode(view, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_add_event_cb(view, on_tile_changed, LV_EVENT_VALUE_CHANGED, NULL);
 
 
   /* All Tiles */
@@ -278,16 +353,22 @@ void main_ui() {
 
 
   /* All should be to the right so its not swippable */
-  date_tile = lv_tileview_add_tile(view, 2, 0, LV_DIR_RIGHT);
+  date_tile = lv_tileview_add_tile(view, 2, 0, LV_DIR_LEFT);
   lv_obj_set_style_bg_opa(date_tile, LV_OPA_TRANSP, NULL);
   date_ui();
 
 
-  settings_tile = lv_tileview_add_tile(view, 2, 1, LV_DIR_RIGHT);
+  settings_tile = lv_tileview_add_tile(view, 2, 1, LV_DIR_LEFT);
   lv_obj_set_style_bg_opa(settings_tile, LV_OPA_TRANSP, NULL);
+  lv_obj_add_event_cb(settings_tile, swip_left_cb, LV_EVENT_GESTURE, NULL);
 
-  wifi_tile = lv_tileview_add_tile(view, 2, 2, LV_DIR_RIGHT);
+  bluetooth_tile = lv_tileview_add_tile(view, 2, 2, LV_DIR_LEFT);
+  lv_obj_set_style_bg_opa(bluetooth_tile, LV_OPA_TRANSP, NULL);
+
+  wifi_tile = lv_tileview_add_tile(view, 2, 3, LV_DIR_LEFT);
   lv_obj_set_style_bg_opa(wifi_tile, LV_OPA_TRANSP, NULL);
+  wifi_input_ui(wifi_tile);
+
 
 
   /* Items in HOME Tiles */
@@ -355,7 +436,7 @@ void main_ui() {
   lv_obj_set_flex_align(home_row2, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   // cta_block(cta_box, 180, 3);
-  cta_block(home_row2, 120, 2);
+  cta_block(home_row2, 120, 1.9);
 
 
 
@@ -423,7 +504,11 @@ void header_ui() {
   /* Wifi */
   wifi_label = lv_label_create(header);
   lv_obj_align_to(wifi_label, header, LV_ALIGN_LEFT_MID, 10, 0);
-  lv_label_set_text(wifi_label, LV_SYMBOL_WIFI);
+  if (WiFi.status() == WL_CONNECTED) {
+    lv_label_set_text(wifi_label, LV_SYMBOL_WIFI);
+  } else {
+    lv_label_set_text(wifi_label, "");
+  }
   lv_obj_set_style_text_color(wifi_label, lv_color_white(), NULL);
 
 
@@ -627,13 +712,13 @@ void calender_ui(lv_obj_t *parent) {
   lv_obj_set_size(calendar, lv_pct(100), 200);
   lv_obj_add_event_cb(calendar, event_handler, LV_EVENT_ALL, NULL);
   lv_calendar_set_day_names(calendar, day_names);
-
-  lv_calendar_set_today_date(calendar, (timeinfo.tm_year + 1900), timeinfo.tm_mday, timeinfo.tm_wday);
+lv_calendar_header_dropdown_set_year_list(calendar, years_list);
+  lv_calendar_set_today_date(calendar, (timeinfo.tm_year + 1900), timeinfo.tm_mon + 1, timeinfo.tm_mday);
   lv_calendar_set_showed_date(calendar, (timeinfo.tm_year + 1900), timeinfo.tm_mday);
 
   selected_days[0].year = (timeinfo.tm_year + 1900);
-  selected_days[0].month = timeinfo.tm_mday;
-  selected_days[0].day = timeinfo.tm_wday;
+  selected_days[0].month = timeinfo.tm_mon;
+  selected_days[0].day = timeinfo.tm_mday;
   lv_calendar_set_highlighted_dates(calendar, selected_days, 1);
 
 #if LV_USE_CALENDAR_HEADER_DROPDOWN
@@ -655,7 +740,7 @@ void save_date_time_cb(lv_event_t *) {
 
 void go_back_cb(lv_event_t *e) {
   lv_obj_t *current_tile = lv_tileview_get_tile_act(view);
-  if (current_tile != menu_tile) lv_obj_set_tile(view, menu_tile, LV_ANIM_ON);
+  if (current_tile != menu_tile) lv_obj_set_tile(view, menu_tile, LV_ANIM_OFF);
 }
 
 
@@ -674,4 +759,149 @@ void back_btn(lv_obj_t *parent) {
   lv_obj_t *img = lv_label_create(btn);
   lv_label_set_text(img, LV_SYMBOL_LEFT);
   lv_obj_center(img);
+}
+
+
+static void ta_event_cb(lv_event_t *e) {
+  lv_event_code_t code = lv_event_get_code(e);
+  lv_obj_t *ta = lv_event_get_target(e);
+  lv_obj_t *kb = (lv_obj_t *)lv_event_get_user_data(e);
+  if (code == LV_EVENT_FOCUSED) {
+    lv_keyboard_set_textarea(kb, ta);
+    lv_obj_clear_flag(kb, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(wifi_scan_btn, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  if (code == LV_EVENT_DEFOCUSED) {
+    lv_keyboard_set_textarea(kb, NULL);
+    lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(wifi_scan_btn, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  if (code == LV_EVENT_READY) {
+    password = lv_textarea_get_text(ta);
+    WiFi.begin(ssid, password);
+    int i = 0;
+    while (WiFi.status() != WL_CONNECTED) {
+      i++;
+      delay(100);
+      Serial.println("");
+      Serial.printf("password: %s \n SSID: %s \n", password, ssid);
+      if (i == 10) break;
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      prefs.putString("ssid", String(ssid));
+      prefs.putString("password", String(password));
+      lv_label_set_text_fmt(wifi_status_label, "Connected to %s", ssid);
+    }
+  }
+}
+
+
+
+void scan_and_update_dropdown_cb(lv_event_t *e) {
+
+  lv_dropdown_set_text(wifi_dropdown, "Scanning...");
+  lv_dropdown_set_options(wifi_dropdown, "Select");
+  int networkCount = WiFi.scanNetworks(); /* Scan available networks */
+  if (networkCount > 0) {
+    lv_dropdown_set_text(wifi_dropdown, NULL);
+    for (int i = 0; i < min(networkCount, MAX_NETWORKS); i++) {
+      // Add a new row for each network
+      lv_dropdown_add_option(wifi_dropdown, WiFi.SSID(i).c_str(), i + 1);
+    }
+  }
+  WiFi.scanDelete();  // Free memory after scan
+}
+
+
+static void wifi_dropdown_event_handler(lv_event_t *e) {
+  lv_event_code_t code = lv_event_get_code(e);
+  lv_obj_t *obj = lv_event_get_target(e);
+  int wifi = (int)lv_event_get_user_data(e);
+  if (code == LV_EVENT_VALUE_CHANGED) {
+    char buf[32];
+    lv_dropdown_get_selected_str(obj, buf, sizeof(buf));
+    ssid = (char *)buf;
+    WiFi.begin(ssid, password);
+    int i = 0;
+    while (WiFi.status() != WL_CONNECTED) {
+      i++;
+      delay(100);
+      Serial.print(".");
+      if (i == 10) break;
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      prefs.putString("ssid", String(ssid));
+      prefs.putString("password", String(password));
+      lv_label_set_text_fmt(wifi_status_label, "Connected to %s", ssid);
+    }
+
+    LV_LOG_USER("Option: %s", buf);
+  }
+}
+
+
+void wifi_input_ui(lv_obj_t *parent) {
+
+  lv_style_t style;
+  lv_style_init(&style);
+  lv_style_set_pad_column(&style, 10);
+  lv_obj_t *col = lv_obj_create(parent);
+  lv_obj_remove_style_all(col);
+  lv_obj_set_size(col, LV_PCT(100), lv_pct(100));
+  lv_obj_set_style_pad_hor(col, 20, NULL);
+  lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, NULL);
+  lv_obj_add_style(col, &style, NULL);
+  // lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+  // lv_obj_set_flex_align(col, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  wifi_dropdown = lv_dropdown_create(col);
+  lv_obj_align(wifi_dropdown, LV_ALIGN_TOP_MID, 0, 20);
+  lv_obj_set_size(wifi_dropdown, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_add_event_cb(wifi_dropdown, wifi_dropdown_event_handler, LV_EVENT_ALL, NULL);
+  lv_dropdown_set_text(wifi_dropdown, "Scan for Wifi");
+
+
+  /*Create a text area. The keyboard will write here*/
+  lv_obj_t *ta;
+  ta = lv_textarea_create(col);
+  lv_obj_align_to(ta, wifi_dropdown, LV_ALIGN_OUT_BOTTOM_MID, 30, 20);
+  /*Create a keyboard to use it with an of the text areas*/
+  lv_obj_t *kb = lv_keyboard_create(wifi_tile);
+  lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
+  // lv_obj_align(ta, LV_ALIGN_TOP_LEFT, 10, 10);
+  lv_obj_add_event_cb(ta, ta_event_cb, LV_EVENT_ALL, kb);
+  lv_textarea_set_placeholder_text(ta, "Password");
+  lv_obj_set_size(ta, lv_pct(100), 40);
+  lv_textarea_set_one_line(ta, true);
+  lv_textarea_set_password_mode(ta, true);
+  lv_keyboard_set_textarea(kb, ta);
+  lv_obj_align_to(kb, ta, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+
+  lv_obj_t *div = lv_obj_create(col);
+  lv_obj_remove_style_all(div);
+  lv_obj_set_size(div, lv_pct(100), 20);
+  lv_obj_align_to(div, ta, LV_ALIGN_OUT_BOTTOM_MID, 0, 30);
+  wifi_status_label = lv_label_create(div);
+  lv_obj_center(wifi_status_label);
+  lv_label_set_long_mode(wifi_status_label, LV_LABEL_LONG_SCROLL);
+  // lv_obj_set_style_text_font()
+  if (WiFi.status() == WL_CONNECTED) {
+    lv_label_set_text_fmt(wifi_status_label, "Connected to %s", ssid);
+  } else {
+    lv_label_set_text(wifi_status_label, "Not Connected");
+  }
+
+  lv_obj_set_style_text_color(wifi_status_label, LV_COLOR_WHITE, NULL);
+
+  wifi_scan_btn = lv_btn_create(col);
+  lv_obj_align(wifi_scan_btn, LV_ALIGN_BOTTOM_MID, 0, -20);
+  lv_obj_t *label = lv_img_create(wifi_scan_btn);
+  lv_img_set_src(label, LV_SYMBOL_WIFI "  Scan");
+  lv_obj_center(label);
+
+
+  // Add event callback to refresh WiFi list
+  lv_obj_add_event_cb(wifi_scan_btn, scan_and_update_dropdown_cb, LV_EVENT_CLICKED, NULL);
 }
