@@ -74,8 +74,8 @@ typedef struct {
 static Menu menus[] = {
   { 0, &calendar_icon, 0xFF3493 },
   { 1, &settings_icon, 0xF0F002 },
+  { 3, &wifi_icon, 0xDBF4AD },
   { 2, &bluetooth_icon, 0xFFD9DA },
-  { 3, &wifi_icon, 0xDBF4AD }
 };
 
 
@@ -97,7 +97,7 @@ static lv_obj_t *hour;
 static lv_obj_t *minute;
 static lv_obj_t *box;
 const char *hour_opts = "1\n2\n3\n4\n5\n6\n7\n8\n9\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24";
-static const char * years_list = "2028\n2027\n2026\n2025\n2024\n2023\n2022\n2021\n2020\n2019\n2018";
+static const char *years_list = "2028\n2027\n2026\n2025\n2024\n2023\n2022\n2021\n2020\n2019\n2018";
 const char *minute_opts =
   "00\n01\n02\n03\n04\n05\n06\n07\n08\n09\n"
   "10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n"
@@ -171,6 +171,12 @@ void do_tick() {
     lv_obj_clear_flag(charging_icon, LV_OBJ_FLAG_HIDDEN);
   } else {
     lv_obj_add_flag(charging_icon, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    lv_label_set_text(wifi_label, LV_SYMBOL_WIFI);
+  } else {
+    lv_label_set_text(wifi_label, "");
+    // connect_wifi();
   }
 }
 
@@ -260,7 +266,14 @@ void on_tile_changed(lv_event_t *e) {
   // }
 }
 
-
+void connect_wifi() {
+  String s = prefs.getString("ssid", "");
+  String p = prefs.getString("password", "");
+  ssid = s.c_str();
+  password = p.c_str();
+  Serial.printf("Connected to: \n ssid: %s pass: %s", ssid, password);
+  WiFi.begin(ssid, password);
+}
 
 
 
@@ -275,20 +288,11 @@ void setup() {
   beginLvglHelper();
   sntp_set_time_sync_notification_cb(timeavailable);
   configTzTime(time_zone, ntpServer1, ntpServer2);
-  // while (WiFi.status() != WL_CONNECTED) {
-  //   delay(5);
-  //   Serial.print(".");
-  // }
   time(&now);
   localtime_r(&now, &timeinfo);
   main_ui();
   do_tick();
-  String s = prefs.getString("ssid", "Redmi 10");
-  String p = prefs.getString("password", "nas");
-  ssid = s.c_str();
-  password = p.c_str();
-  Serial.printf("ssid: %s pass: %s", ssid, password);
-  WiFi.begin(ssid, password);
+  connect_wifi();
   while (WiFi.status() != WL_CONNECTED) {
     delay(5);
     lv_task_handler();
@@ -712,7 +716,7 @@ void calender_ui(lv_obj_t *parent) {
   lv_obj_set_size(calendar, lv_pct(100), 200);
   lv_obj_add_event_cb(calendar, event_handler, LV_EVENT_ALL, NULL);
   lv_calendar_set_day_names(calendar, day_names);
-lv_calendar_header_dropdown_set_year_list(calendar, years_list);
+  lv_calendar_header_dropdown_set_year_list(calendar, years_list);
   lv_calendar_set_today_date(calendar, (timeinfo.tm_year + 1900), timeinfo.tm_mon + 1, timeinfo.tm_mday);
   lv_calendar_set_showed_date(calendar, (timeinfo.tm_year + 1900), timeinfo.tm_mday);
 
