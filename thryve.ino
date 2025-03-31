@@ -1,4 +1,7 @@
+#include <Arduino_JSON.h>
+#include <assert.h>
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include <LilyGoLib.h>
 #include <LV_Helper.h>
 #include "Thrive_Logo.h"
@@ -6,6 +9,7 @@
 #include <time.h>
 #include <sntp.h>
 Preferences prefs;
+
 // #if LV_USE_FLEX
 // #if LV_USE_IMG
 
@@ -15,23 +19,23 @@ Preferences prefs;
 #define DEFAULT_COLOR (lv_color_make(252, 218, 72))
 
 #define LV_COLOR_WHITE LV_COLOR_MAKE(0xFF, 0xFF, 0xFF)
-#define LV_COLOR_SILVER LV_COLOR_MAKE(0xC0, 0xC0, 0xC0)
+// #define LV_COLOR_SILVER LV_COLOR_MAKE(0xC0, 0xC0, 0xC0)
 #define LV_COLOR_GRAY LV_COLOR_MAKE(0x80, 0x80, 0x80)
-#define LV_COLOR_BLACK LV_COLOR_MAKE(0x00, 0x00, 0x00)
-#define LV_COLOR_RED LV_COLOR_MAKE(0xFF, 0x00, 0x00)
-#define LV_COLOR_MAROON LV_COLOR_MAKE(0x80, 0x00, 0x00)
-#define LV_COLOR_YELLOW LV_COLOR_MAKE(0xFF, 0xFF, 0x00)
-#define LV_COLOR_OLIVE LV_COLOR_MAKE(0x80, 0x80, 0x00)
-#define LV_COLOR_LIME LV_COLOR_MAKE(0x00, 0xFF, 0x00)
-#define LV_COLOR_GREEN LV_COLOR_MAKE(0x00, 0x80, 0x00)
-#define LV_COLOR_CYAN LV_COLOR_MAKE(0x00, 0xFF, 0xFF)
-#define LV_COLOR_AQUA LV_COLOR_CYAN
-#define LV_COLOR_TEAL LV_COLOR_MAKE(0x00, 0x80, 0x80)
-#define LV_COLOR_BLUE LV_COLOR_MAKE(0x00, 0x00, 0xFF)
-#define LV_COLOR_NAVY LV_COLOR_MAKE(0x00, 0x00, 0x80)
-#define LV_COLOR_MAGENTA LV_COLOR_MAKE(0xFF, 0x00, 0xFF)
-#define LV_COLOR_PURPLE LV_COLOR_MAKE(0x80, 0x00, 0x80)
-#define LV_COLOR_ORANGE LV_COLOR_MAKE(0xFF, 0xA5, 0x00)
+// #define LV_COLOR_BLACK LV_COLOR_MAKE(0x00, 0x00, 0x00)
+// #define LV_COLOR_RED LV_COLOR_MAKE(0xFF, 0x00, 0x00)
+// #define LV_COLOR_MAROON LV_COLOR_MAKE(0x80, 0x00, 0x00)
+// #define LV_COLOR_YELLOW LV_COLOR_MAKE(0xFF, 0xFF, 0x00)
+// #define LV_COLOR_OLIVE LV_COLOR_MAKE(0x80, 0x80, 0x00)
+// #define LV_COLOR_LIME LV_COLOR_MAKE(0x00, 0xFF, 0x00)
+// #define LV_COLOR_GREEN LV_COLOR_MAKE(0x00, 0x80, 0x00)
+// #define LV_COLOR_CYAN LV_COLOR_MAKE(0x00, 0xFF, 0xFF)
+// #define LV_COLOR_AQUA LV_COLOR_CYAN
+// #define LV_COLOR_TEAL LV_COLOR_MAKE(0x00, 0x80, 0x80)
+// #define LV_COLOR_BLUE LV_COLOR_MAKE(0x00, 0x00, 0xFF)
+// #define LV_COLOR_NAVY LV_COLOR_MAKE(0x00, 0x00, 0x80)
+// #define LV_COLOR_MAGENTA LV_COLOR_MAKE(0xFF, 0x00, 0xFF)
+// #define LV_COLOR_PURPLE LV_COLOR_MAKE(0x80, 0x00, 0x80)
+// #define LV_COLOR_ORANGE LV_COLOR_MAKE(0xFF, 0xA5, 0x00)
 
 
 
@@ -63,6 +67,8 @@ LV_IMG_DECLARE(settings_icon);
 LV_IMG_DECLARE(wifi_icon);
 LV_IMG_DECLARE(calendar_icon);
 LV_IMG_DECLARE(bluetooth_icon);
+LV_IMG_DECLARE(crypto_icon);
+LV_IMG_DECLARE(running_icon);
 
 
 typedef struct {
@@ -73,9 +79,11 @@ typedef struct {
 
 static Menu menus[] = {
   { 0, &calendar_icon, 0xFF3493 },
-  { 1, &settings_icon, 0xF0F002 },
-  { 3, &wifi_icon, 0xDBF4AD },
-  { 2, &bluetooth_icon, 0xFFD9DA },
+  { 7, &settings_icon, 0xF0F002 },
+  { 3, &wifi_icon, 0x19E1E1 },
+  { 4, &crypto_icon, 0xF2E9DF },
+  { 5, &running_icon, 0x4FAE6F },
+  { 8, &bluetooth_icon, 0xFFD9DA },
 };
 
 
@@ -87,8 +95,6 @@ struct tm timeinfo;
 lv_timer_t *clockTimer;
 const char *ntpServer1 = "pool.ntp.org";
 const char *ntpServer2 = "time.nist.gov";
-const long gmtOffset_sec = 3600;
-const int daylightOffset_sec = 3600;
 
 const char *time_zone = "WAT-1";  // TimeZone rule for Europe/Rome including daylight adjustment rules (optional)
 
@@ -126,10 +132,18 @@ void menu_page(void);
 void menu_clicked_cb(lv_event_t *e);
 void save_date_time_cb(lv_event_t *);
 void wifi_input_ui(lv_obj_t *parent);
+void fetch_crypto_lists();
+void parse_crypo_list(String jsonData);
+
+// Forward declaration of the async task
+void fetchCryptoPricesTask(void *parameter);
+
+
+
+
 
 extern "C" {
   void cta_block(lv_obj_t *parent, lv_coord_t arc_size, uint16_t img_zoom);
-  // void wifi_input_ui(lv_obj_t *parent);
 };
 
 static lv_obj_t *view = NULL;
@@ -140,6 +154,14 @@ static lv_obj_t *wifi_tile = NULL;
 static lv_obj_t *wifi_input_tile = NULL;
 static lv_obj_t *bluetooth_tile = NULL;
 static lv_obj_t *settings_tile = NULL;
+static lv_obj_t *crypto_list_tile = NULL;
+static lv_obj_t *crypto_detail_tile;
+
+static lv_obj_t *unused_1;
+static lv_obj_t *unused_2;
+static lv_obj_t *unused_3;
+static lv_obj_t *unused_4;
+
 lv_obj_t *home_main_col = NULL;
 lv_obj_t *wifi_table;
 lv_obj_t *wifi_dropdown;
@@ -148,6 +170,24 @@ lv_obj_t *wifi_scan_btn;
 const char *ssid = NULL;    // Change this to your WiFi SSID
 const char *password = "";  // Change this to your WiFi password
 lv_obj_t *wifi_status_label;
+
+
+
+
+const char *apiURL = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin%2Cethereum%2Cripple%2Cdogecoin&vs_currencies=usd&include_market_cap=true&include_24hr_vol=true&include_24hr_change=true";
+const char *apiKey = "CG-aohJQfFQ12WaFMJErKivKWKm";  // Demo Key
+lv_obj_t *crypto_list;
+lv_obj_t *crypto_table;
+char *currentId = NULL;
+JSONVar coinDetails;
+JSONVar coins;
+
+
+static lv_obj_t *chart;
+static lv_chart_series_t *serX;
+static lv_chart_series_t *serY;
+static lv_chart_cursor_t *cursor;
+
 
 
 void do_tick() {
@@ -161,10 +201,16 @@ void do_tick() {
                         timeinfo.tm_min);
 
   lv_label_set_text_fmt(date_label, "  %02d/%02d %s",
-                        timeinfo.tm_mon,
+                        timeinfo.tm_mon + 1,
                         timeinfo.tm_mday,
                         weekDays[timeinfo.tm_wday]);
-
+  if (timeinfo.tm_hour == 12 && timeinfo.tm_min == 00 && timeinfo.tm_sec < 6) {
+    //Buzz for 5 times
+    // set the effect to play
+    watch.setWaveform(0, 15);  // play effect
+    // play the effect!
+    watch.run();
+  }
   battery_percentage = watch.getBatteryPercent();
   usbPlugIn = watch.isVbusIn();
   if (usbPlugIn) {
@@ -174,6 +220,7 @@ void do_tick() {
   }
   if (WiFi.status() == WL_CONNECTED) {
     lv_label_set_text(wifi_label, LV_SYMBOL_WIFI);
+    // fetch_crypto_lists();
   } else {
     lv_label_set_text(wifi_label, "");
     // connect_wifi();
@@ -182,6 +229,9 @@ void do_tick() {
 
 void tick_time_cb(lv_timer_t *t) {
   do_tick();
+}
+
+void make_request_cb(lv_timer_t *t) {
 }
 
 void timeavailable(struct timeval *t) {
@@ -244,34 +294,46 @@ void menu_clicked_cb(lv_event_t *e) {
   lv_obj_set_tile_id(view, 2, id, LV_ANIM_OFF);
 }
 
-void swip_left_cb(lv_event_t *e) {
-  lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
-  LV_LOG("Moved left");
-  Serial.print("left draw");
-  if (dir == LV_DIR_RIGHT) {
-    lv_obj_set_tile(view, menu_tile, LV_ANIM_OFF);
-  }
-}
+
 
 void on_tile_changed(lv_event_t *e) {
   lv_obj_t *act_tile = lv_tileview_get_tile_act(view);
-  if (act_tile != wifi_tile) {
-    // lv_obj_del(wifi_table);
-    // lv_obj_clear_flag(wifi_scan_btn, LV_OBJ_FLAG_HIDDEN);
-  }
-  // lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
-  // Serial.println(dir);
-  // if (act_tile != home_tile && act_tile != menu_tile ) {
-  //   lv_obj_set_tile(view, menu_tile, LV_ANIM_OFF);
-  // }
 }
+
+void all_cb(lv_event_t *e) {
+  lv_event_code_t code = lv_event_get_code(e);
+  lv_obj_t *act_tile = lv_tileview_get_tile_act(view);
+  switch (code) {
+    case LV_EVENT_SCROLL_BEGIN:
+      // Serial.println("LV_EVENT_SCROLL_BEGIN");
+      break;
+    case LV_EVENT_SCROLL:
+      // Serial.println("LV_EVENT_SCROLL");
+      break;
+    case LV_EVENT_SCROLL_END:
+      if (act_tile == unused_1 || act_tile == unused_2 || act_tile == unused_3 || act_tile == unused_4) {
+        lv_obj_set_tile_id(view, 1, 0, LV_ANIM_OFF);
+      }
+      break;
+    case LV_EVENT_VALUE_CHANGED:
+      if (act_tile != crypto_detail_tile) {
+        currentId = NULL;
+      }
+
+      break;
+    default:
+      // Serial.println("Other event triggered");
+      break;
+  }
+}
+
 
 void connect_wifi() {
   String s = prefs.getString("ssid", "");
   String p = prefs.getString("password", "");
   ssid = s.c_str();
   password = p.c_str();
-  Serial.printf("Connected to: \n ssid: %s pass: %s", ssid, password);
+  Serial.printf("Connecting to: \n ssid: %s pass: %s", ssid, password);
   WiFi.begin(ssid, password);
 }
 
@@ -298,6 +360,17 @@ void setup() {
     lv_task_handler();
     Serial.print(".");
   }
+
+  // **Run API Request in a separate thread**
+  xTaskCreatePinnedToCore(
+    fetchCryptoPricesTask,  // Task function
+    "FetchCryptoPrices",    // Task name
+    8192,                   // Stack size (8KB)
+    NULL,                   // Task parameter
+    1,                      // Priority
+    NULL,                   // Task handle
+    1                       // Run on Core 1 (UI runs on Core 0)
+  );
 }
 
 void loop() {
@@ -318,6 +391,13 @@ void loop() {
 }
 
 
+void fetchCryptoPricesTask(void *parameter) {
+  while (true) {  // Keep running this task
+    fetch_crypto_lists();
+    fetch_crypto_detail();
+    vTaskDelay(1000 / portTICK_PERIOD_MS);  // Delay 1 minute before next request
+  }
+}
 
 
 void main_ui() {
@@ -341,7 +421,11 @@ void main_ui() {
   lv_obj_set_style_bg_opa(view, LV_OPA_TRANSP, NULL);
   lv_obj_add_style(view, &style_scrolled, LV_PART_SCROLLBAR | LV_STATE_SCROLLED);
   lv_obj_set_scrollbar_mode(view, LV_SCROLLBAR_MODE_OFF);
-  lv_obj_add_event_cb(view, on_tile_changed, LV_EVENT_VALUE_CHANGED, NULL);
+  // lv_obj_add_event_cb(view, on_tile_changed, LV_EVENT_VALUE_CHANGED, NULL);
+  // lv_obj_add_event_cb(view, gesture_cb, LV_EVENT_SCROLL_END, NULL);
+  lv_obj_add_event_cb(view, all_cb, LV_EVENT_ALL, NULL);
+
+
 
 
   /* All Tiles */
@@ -351,8 +435,15 @@ void main_ui() {
 
   menu_tile = lv_tileview_add_tile(view, 1, 0, LV_DIR_LEFT);
   lv_obj_set_style_bg_opa(menu_tile, LV_OPA_TRANSP, NULL);
-
   menu_page();
+
+  /* Unused Tiles to help return swipe to the menu_tile */
+  unused_1 = lv_tileview_add_tile(view, 1, 1, LV_DIR_TOP);
+  unused_2 = lv_tileview_add_tile(view, 1, 2, LV_DIR_TOP);
+  unused_3 = lv_tileview_add_tile(view, 1, 3, LV_DIR_TOP);
+  unused_4 = lv_tileview_add_tile(view, 1, 4, LV_DIR_TOP);
+
+  /*----------------------------------------------------------------*/
 
 
 
@@ -364,7 +455,6 @@ void main_ui() {
 
   settings_tile = lv_tileview_add_tile(view, 2, 1, LV_DIR_LEFT);
   lv_obj_set_style_bg_opa(settings_tile, LV_OPA_TRANSP, NULL);
-  lv_obj_add_event_cb(settings_tile, swip_left_cb, LV_EVENT_GESTURE, NULL);
 
   bluetooth_tile = lv_tileview_add_tile(view, 2, 2, LV_DIR_LEFT);
   lv_obj_set_style_bg_opa(bluetooth_tile, LV_OPA_TRANSP, NULL);
@@ -372,6 +462,16 @@ void main_ui() {
   wifi_tile = lv_tileview_add_tile(view, 2, 3, LV_DIR_LEFT);
   lv_obj_set_style_bg_opa(wifi_tile, LV_OPA_TRANSP, NULL);
   wifi_input_ui(wifi_tile);
+
+  crypto_list_tile = lv_tileview_add_tile(view, 2, 4, LV_DIR_LEFT);
+  lv_obj_set_style_bg_opa(crypto_list_tile, LV_OPA_TRANSP, NULL);
+  crypto_list_ui();
+
+  crypto_detail_tile = lv_tileview_add_tile(view, 3, 4, LV_DIR_LEFT);
+  lv_obj_set_style_bg_opa(crypto_detail_tile, LV_OPA_TRANSP, NULL);
+  lv_obj_set_style_pad_hor(crypto_detail_tile, 0, NULL);
+  crypto_detail_ui();
+
 
 
 
@@ -578,15 +678,15 @@ static void time_settings_cb(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
   lv_obj_t *obj = lv_event_get_target(e);
   if (code == LV_EVENT_VALUE_CHANGED) {
-    char buf[32];
+    char buf[4];
     lv_roller_get_selected_str(obj, buf, sizeof(buf));
     if (obj == hour) {
-      set_time.tm_hour = (int)buf;
+      set_time.tm_hour = atoi(buf);
     }
     if (obj == minute) {
-      set_time.tm_min = (int)buf;
+      set_time.tm_min = atoi(buf);
     }
-    LV_LOG_USER("Selected value: %s", buf);
+    LV_LOG_USER("Selected value: %d", atoi(buf));
   }
 }
 
@@ -650,7 +750,8 @@ void date_time_settings(lv_obj_t *parent) {
   lv_roller_set_visible_row_count(hour, 3);
   lv_obj_add_style(hour, &style_sel, LV_PART_SELECTED);
   lv_obj_add_event_cb(hour, time_settings_cb, LV_EVENT_ALL, NULL);
-  lv_roller_set_selected(hour, timeinfo.tm_hour, LV_ANIM_OFF);
+  int h = timeinfo.tm_hour;
+  lv_roller_set_selected(hour, h, LV_ANIM_OFF);
 
   lv_obj_t *separator_label = lv_label_create(box);
   lv_label_set_text(separator_label, ":");
@@ -660,7 +761,8 @@ void date_time_settings(lv_obj_t *parent) {
   lv_roller_set_visible_row_count(minute, 3);
   lv_obj_add_style(minute, &style_sel, LV_PART_SELECTED);
   lv_obj_add_event_cb(minute, time_settings_cb, LV_EVENT_ALL, NULL);
-  lv_roller_set_selected(minute, timeinfo.tm_min, LV_ANIM_OFF);
+  int m = timeinfo.tm_min;
+  lv_roller_set_selected(minute, m, LV_ANIM_OFF);
 
 
 
@@ -857,8 +959,7 @@ void wifi_input_ui(lv_obj_t *parent) {
   lv_obj_set_style_pad_hor(col, 20, NULL);
   lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, NULL);
   lv_obj_add_style(col, &style, NULL);
-  // lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
-  // lv_obj_set_flex_align(col, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
 
   wifi_dropdown = lv_dropdown_create(col);
   lv_obj_align(wifi_dropdown, LV_ALIGN_TOP_MID, 0, 20);
@@ -908,4 +1009,283 @@ void wifi_input_ui(lv_obj_t *parent) {
 
   // Add event callback to refresh WiFi list
   lv_obj_add_event_cb(wifi_scan_btn, scan_and_update_dropdown_cb, LV_EVENT_CLICKED, NULL);
+}
+
+
+
+void cell_select_cb(lv_event_t *e) {
+  lv_obj_t *obj = lv_event_get_target(e);
+  uint16_t col;
+  uint16_t row;
+  lv_table_get_selected_cell(obj, &row, &col);
+  if (row != 0) {
+    JSONVar keys = coins.keys();
+    const char *coinName = (const char *)keys[row - 1];
+    currentId = (char *)lv_table_get_cell_value(obj, row, 0);
+    Serial.printf("Clicked %d %s", row, currentId);
+    Serial.println();
+    lv_obj_set_tile_id(view, 3, 4, LV_ANIM_OFF);
+  }
+}
+
+void parse_crypo_list(String jsonData) {
+
+  coins = JSON.parse(jsonData);
+  if (JSON.typeof(coins) == "undefined") {
+    Serial.println("Parsing failed!");
+    return;
+  }
+  // myObject.keys() can be used to get an array of all the keys in the object
+  JSONVar keys = coins.keys();
+
+  for (int i = 0; i < keys.length(); i++) {
+    const char *coinName = (const char *)keys[i];  // Get the coin name
+    JSONVar coinData = coins[keys[i]];
+
+    float price = (double)coinData["usd"];
+    float marketCap = (double)coinData["usd_market_cap"] / 1e9;
+    float volume = (double)coinData["usd_24h_vol"];
+    float change = (double)coinData["usd_24h_change"];
+
+    // Convert values to char* using snprintf
+    char priceStr[20], marketCapStr[20], volumeStr[20], changeStr[20];
+    snprintf(priceStr, sizeof(priceStr), "$%.2f", price);
+    snprintf(marketCapStr, sizeof(marketCapStr), "%.2fB", marketCap);
+    snprintf(volumeStr, sizeof(volumeStr), "%.2f", volume);
+    snprintf(changeStr, sizeof(changeStr), "%.2f%%", change);
+
+
+    lv_table_set_cell_value(crypto_table, i + 1, 0, coinName);
+    lv_table_set_cell_value(crypto_table, i + 1, 1, priceStr);
+    lv_table_set_cell_value(crypto_table, i + 1, 2, marketCapStr);
+    lv_table_set_cell_value(crypto_table, i + 1, 3, changeStr);
+  }
+}
+
+
+void fetch_crypto_lists() {
+  if (currentId) {
+    return;
+  }
+  HTTPClient http;
+  http.begin(apiURL);
+  http.addHeader("accept", "application/json");
+  http.addHeader("x-cg-demo-api-key", apiKey);
+
+  int httpCode = http.GET();
+  if (httpCode > 0) {
+    String payload = http.getString();
+    // Serial.println(payload);
+    parse_crypo_list(payload);
+  } else {
+    Serial.println("Failed to fetch data");
+  }
+  http.end();
+}
+
+
+void parse_crypto_detail(String data) {
+
+  coinDetails = JSON.parse(data);
+  if (JSON.typeof(coinDetails) == "undefined") {
+    Serial.println("Parsing failed!");
+    return;
+  }
+  coinDetails["id"] = String(currentId);
+  String v = JSON.stringify(coinDetails);
+  Serial.println(v);
+
+  JSONVar prices = coinDetails["prices"];
+  if (prices.length() == 0) return;
+  // Initialize min and max with the first price value
+  float minY = atof(JSON.stringify(prices[0][0]).c_str());
+  float maxY = minY;
+  float minX = atof(JSON.stringify(prices[0][1]).c_str());
+  float maxX = minX;
+  // Find min and max price values
+  for (int i = 1; i < prices.length(); i++) {
+    float price = atof(JSON.stringify(prices[i][0]).c_str());
+    if (price < minY) minY = price;
+    if (price > maxY) maxY = price;
+  }
+
+
+  lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, 0, 100);
+  // Normalize and add values to the chart
+  for (int i = 0; i < prices.length(); i++) {
+    float price = atof(JSON.stringify(prices[i][0]).c_str());
+    int normalizedValueY = ((price - minY) / (maxY - minY)) * 100;  // Scale to 0-100
+    lv_chart_set_next_value(chart, serY, normalizedValueY);
+  }
+  // lv_chart_refresh(chart);
+  // lv_chart_set_ext_y_array(chart, ser, value_array)
+  // lv_chart_refresh(chart)
+  // JSONVar coinName = coinDetails["id"];
+  // lv_obj_t *label = lv_label_create(chart);
+  // lv_label_set_text_fmt(label, "%s Price series (3days)", coinName);
+  // lv_obj_align_to(label, chart, LV_ALIGN_BOTTOM_MID, 0, 15);
+}
+
+
+
+void fetch_crypto_detail() {
+  if (!currentId) {
+    return;
+  }
+  const char *url = "https://api.coingecko.com/api/v3/coins/";
+  const char *end = "/market_chart?vs_currency=usd&days=1";
+
+  int length = strlen(url) + strlen(end) + strlen(currentId) + 1;
+  char apiUrl[length];
+  // Format and store in apiUrl
+  snprintf(apiUrl, sizeof(apiUrl), "%s%s%s", url, currentId, end);
+  // Serial.printf("APP_URL: %s %s", apiUrl, currentId);
+  Serial.println();
+  // Serial.println(apiUrl);
+  if (coinDetails["id"] == String(currentId)) {
+    String s = JSON.stringify(coinDetails);
+    parse_crypto_detail(s);
+    return;
+  }
+
+  HTTPClient http;
+  http.begin(apiUrl);
+  http.addHeader("accept", "application/json");
+  http.addHeader("x-cg-demo-api-key", apiKey);
+
+  int httpCode = http.GET();
+  if (httpCode > 0) {
+    String payload = http.getString();
+    // Serial.println(payload);
+    parse_crypto_detail(payload);
+  } else {
+    Serial.println("Failed to fetch data");
+  }
+  http.end();
+}
+
+static void draw_part_event_cb(lv_event_t *e) {
+
+  lv_obj_t *obj = lv_event_get_target(e);
+  lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
+  /*If the cells are drawn...*/
+  if (dsc->part == LV_PART_ITEMS) {
+    uint32_t row = dsc->id / lv_table_get_col_cnt(obj);
+    uint32_t col = dsc->id - row * lv_table_get_col_cnt(obj);
+
+    /*Make the texts in the first cell center aligned*/
+    if (row == 0) {
+      dsc->label_dsc->align = LV_TEXT_ALIGN_CENTER;
+      dsc->rect_dsc->bg_color = lv_color_mix(lv_palette_main(LV_PALETTE_BLUE), dsc->rect_dsc->bg_color, LV_OPA_20);
+      dsc->rect_dsc->bg_opa = LV_OPA_COVER;
+    }
+    /*In the first column align the texts to the right*/
+    else if (col == 0) {
+      dsc->label_dsc->align = LV_TEXT_ALIGN_CENTER;
+    }
+
+    /*MAke every 2nd row grayish*/
+    if ((row != 0 && row % 2) == 0) {
+      dsc->rect_dsc->bg_color = lv_color_mix(lv_palette_main(LV_PALETTE_GREY), dsc->rect_dsc->bg_color, LV_OPA_10);
+      dsc->rect_dsc->bg_opa = LV_OPA_COVER;
+    }
+  }
+}
+
+
+
+void crypto_list_ui() {
+  lv_style_t style;
+  lv_style_init(&style);
+  lv_style_set_pad_column(&style, 0);
+  lv_obj_t *col = lv_obj_create(crypto_list_tile);
+  lv_obj_remove_style_all(col);
+  lv_obj_set_size(col, LV_PCT(100), LV_SIZE_CONTENT);
+  lv_obj_set_style_pad_hor(col, 0, NULL);
+  lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, NULL);
+  lv_obj_add_style(col, &style, NULL);
+
+  crypto_list = lv_table_create(col);
+  // Create a list inside the tile
+  lv_obj_set_size(crypto_list, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_center(crypto_list);
+
+  crypto_table = lv_table_create(crypto_list);
+  lv_table_set_cell_value(crypto_table, 0, 0, "Coin");
+  lv_table_set_cell_value(crypto_table, 0, 1, "Price");
+  lv_table_set_cell_value(crypto_table, 0, 2, "Market Cap");
+  lv_table_set_cell_value(crypto_table, 0, 3, "24h change");
+  /*Add an event callback to to apply some custom drawing*/
+  lv_obj_add_event_cb(crypto_table, draw_part_event_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
+  lv_obj_add_event_cb(crypto_table, cell_select_cb, LV_EVENT_VALUE_CHANGED, NULL);
+}
+
+
+
+static void event_cb(lv_event_t *e) {
+  static int32_t last_id = -1;
+  lv_event_code_t code = lv_event_get_code(e);
+  lv_obj_t *obj = lv_event_get_target(e);
+
+  if (code == LV_EVENT_VALUE_CHANGED) {
+    last_id = lv_chart_get_pressed_point(obj);
+    if (last_id != LV_CHART_POINT_NONE) {
+      lv_chart_set_cursor_point(obj, cursor, NULL, last_id);
+    }
+  } else if (code == LV_EVENT_DRAW_PART_END) {
+    lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
+    if (!lv_obj_draw_part_check_type(dsc, &lv_chart_class, LV_CHART_DRAW_PART_CURSOR)) return;
+    if (dsc->p1 == NULL || dsc->p2 == NULL || dsc->p1->y != dsc->p2->y || last_id < 0) return;
+
+    lv_coord_t *data_array = lv_chart_get_y_array(chart, serY);
+    lv_coord_t v = data_array[last_id];
+    char buf[16];
+    lv_snprintf(buf, sizeof(buf), "%d", v);
+
+    lv_point_t size;
+    lv_txt_get_size(&size, buf, LV_FONT_DEFAULT, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+
+    lv_area_t a;
+    a.y2 = dsc->p1->y - 5;
+    a.y1 = a.y2 - size.y - 10;
+    a.x1 = dsc->p1->x + 10;
+    a.x2 = a.x1 + size.x + 10;
+
+    lv_draw_rect_dsc_t draw_rect_dsc;
+    lv_draw_rect_dsc_init(&draw_rect_dsc);
+    draw_rect_dsc.bg_color = lv_palette_main(LV_PALETTE_BLUE);
+    draw_rect_dsc.radius = 1;
+
+    lv_draw_rect(dsc->draw_ctx, &draw_rect_dsc, &a);
+
+    lv_draw_label_dsc_t draw_label_dsc;
+    lv_draw_label_dsc_init(&draw_label_dsc);
+    draw_label_dsc.color = lv_color_white();
+    a.x1 += 5;
+    a.x2 -= 5;
+    a.y1 += 5;
+    a.y2 -= 5;
+    lv_draw_label(dsc->draw_ctx, &draw_label_dsc, &a, buf, NULL);
+  }
+}
+
+void crypto_detail_ui() {
+  chart = lv_chart_create(crypto_detail_tile);
+  lv_obj_set_size(chart, 200, 200);
+  lv_obj_align(chart, LV_ALIGN_CENTER, 20, 0);
+
+  lv_obj_add_event_cb(chart, event_cb, LV_EVENT_ALL, NULL);
+  lv_obj_refresh_ext_draw_size(chart);
+
+  cursor = lv_chart_add_cursor(chart, lv_palette_main(LV_PALETTE_BLUE), LV_DIR_LEFT | LV_DIR_BOTTOM);
+
+  serY = lv_chart_add_series(chart, lv_palette_main(LV_PALETTE_RED), LV_CHART_AXIS_PRIMARY_Y);
+  // serX = lv_chart_add_series(chart, lv_palette_main(LV_PALETTE_GREEN), LV_CHART_AXIS_PRIMARY_X);
+  lv_chart_set_update_mode(chart, LV_CHART_UPDATE_MODE_SHIFT);
+  lv_chart_set_zoom_y(chart, 256 * 5);
+  lv_chart_set_axis_tick(chart, LV_CHART_AXIS_PRIMARY_Y, 10, 3, 25, 10, true, 25);
+
+  lv_obj_t *label = lv_label_create(chart);
+  lv_label_set_text(label, "Click on a point");
+  lv_obj_align_to(label, chart, LV_ALIGN_OUT_TOP_MID, 0, 15);
 }

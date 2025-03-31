@@ -1,4 +1,5 @@
 #include <lvgl.h>
+
 #if LV_USE_ARC
 
 LV_IMG_DECLARE(recycle_symbol);
